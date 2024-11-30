@@ -1,39 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { BarChart, QrCode, Users, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { QrCode, CheckCircle, AlertCircle } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import axios from 'axios';
 
+// Configuración de Socket.IO
 const socket = io('http://localhost:3001');
 
 function App() {
   const [scannedCode, setScannedCode] = useState('');
   const [isValid, setIsValid] = useState<boolean | null>(null);
   const [stats, setStats] = useState({
-    dailyAccess: 0,    // Cambia los nombres para que coincidan con el backend
+    dailyAccess: 0,
     weeklyAccess: 0,
     monthlyAccess: 0,
     dailyNewCodes: 0,
   });
   const [mode, setMode] = useState<'verify' | 'register'>('verify');
 
-  // Llamar al backend al cargar el componente
+  // Obtener estadísticas al montar el componente
   useEffect(() => {
-    fetchStats(); // Obtener estadísticas iniciales
+    fetchStats();
   }, []);
 
-  // Escuchar eventos de Socket.IO
+  // Manejar eventos de Socket.IO
   useEffect(() => {
     socket.on('scanResult', (data) => {
       setScannedCode(data.code);
       setIsValid(data.isValid);
+
       toast(data.isValid ? '¡Acceso concedido!' : '¡Acceso denegado!', {
         icon: data.isValid ? '✅' : '❌',
       });
     });
 
     socket.on('updateStats', (newStats) => {
-      setStats(newStats); // Actualizar las estadísticas con los datos en tiempo real
+      setStats(newStats);
     });
 
     socket.on('doorOpened', () => {
@@ -47,6 +49,7 @@ function App() {
     };
   }, []);
 
+  // Registrar código
   const handleRegisterCode = async () => {
     if (!scannedCode) {
       toast.error('Primero escanee un código de barras');
@@ -58,14 +61,16 @@ function App() {
       toast.success('¡Código registrado exitosamente!');
       setScannedCode('');
     } catch (error) {
+      console.error('Error al registrar el código:', error);
       toast.error('Error al registrar el código');
     }
   };
 
+  // Obtener estadísticas desde el backend
   const fetchStats = async () => {
     try {
       const response = await axios.get('http://localhost:3001/api/stats');
-      setStats(response.data); // Actualizar el estado con las estadísticas recibidas
+      setStats(response.data);
     } catch (error) {
       console.error('Error al obtener estadísticas:', error);
       toast.error('No se pudieron obtener las estadísticas');
@@ -107,7 +112,18 @@ function App() {
         {/* Scan Status */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="text-center">
-            <h2 className="text-xl font-semibold mb-4">{mode === 'verify' ? 'Escanear código de barras para verificar' : 'Registrar nuevo código de barras'}</h2>
+            {/* Encabezado dinámico */}
+            <h2 className="text-xl font-semibold mb-4">
+              {scannedCode
+                ? isValid === null
+                  ? 'Esperando el resultado del escaneo...'
+                  : isValid
+                  ? 'Código de barras válido'
+                  : 'Código de barras no válido'
+                : 'Ningún código escaneado todavía'}
+            </h2>
+
+            {/* Icono y mensaje visual */}
             <div className="text-6xl mb-4">
               {scannedCode ? (
                 isValid !== null ? (
@@ -123,23 +139,20 @@ function App() {
                 'Ningún código escaneado todavía'
               )}
             </div>
-            <h3 className="text-lg font-medium text-gray-700">
-              {scannedCode && isValid === null ? 'Esperando el resultado del escaneo...' : ''}
-            </h3>
           </div>
         </div>
 
-        {/* Buttons */}
-        <div className="flex justify-center gap-6">
-          {mode === 'register' && (
+        {/* Registro de código */}
+        {mode === 'register' && (
+          <div className="flex justify-center">
             <button
               onClick={handleRegisterCode}
               className="px-6 py-2 rounded-lg bg-indigo-600 text-white font-semibold"
             >
-              Código de registro
+              Registrar código
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Statistics */}
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">

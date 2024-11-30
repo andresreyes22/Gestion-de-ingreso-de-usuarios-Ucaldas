@@ -1,4 +1,3 @@
-// backend/index.js
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -10,7 +9,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",  // Cambia esto por la URL de tu frontend si es necesario
+    origin: "http://localhost:5173", // Cambia esto por la URL de tu frontend si es necesario
     methods: ["GET", "POST"]
   }
 });
@@ -42,124 +41,163 @@ keypress(process.stdin);
 process.stdin.setRawMode(true);
 process.stdin.resume();
 
-let scannedCode = "";  // Variable para almacenar el código escaneado
-let scanTimeout;  // Variable para el temporizador que detecta cuando el escaneo termina
+let scannedCode = ""; // Variable para almacenar el código escaneado
+let scanTimeout; // Variable para el temporizador que detecta cuando el escaneo termina
+
+// Función para actualizar estadísticas
+const updateStats = async () => {
+  const now = new Date();
+  const dayStart = new Date(now.setHours(0, 0, 0, 0));
+  const weekStart = new Date(now.setDate(now.getDate() - 7));
+  const monthStart = new Date(now.setDate(now.getDate() - 30));
+
+  try {
+    const [dailyAccess, weeklyAccess, monthlyAccess, dailyNewCodes] = await Promise.all([
+      AccessLog.countDocuments({ timestamp: { $gte: dayStart } }),
+      AccessLog.countDocuments({ timestamp: { $gte: weekStart } }),
+      AccessLog.countDocuments({ timestamp: { $gte: monthStart } }),
+      Code.countDocuments({ createdAt: { $gte: dayStart } })
+    ]);
+
+    const stats = {
+      dailyAccess,
+      weeklyAccess,
+      monthlyAccess,
+      dailyNewCodes
+    };
+
+    console.log("Updated Stats:", stats);
+    io.emit('updateStats', stats); // Emitir las estadísticas actualizadas
+  } catch (error) {
+    console.error('Error updating stats:', error);
+  }
+};
 
 // Capturar teclas del lector de códigos de barras
 process.stdin.on('keypress', async (ch, key) => {
-  console.log('Key pressed:', ch);  // Log para depurar
+  console.log(`Key pressed: ${ch}`); // Log para cada tecla presionada
+  clearTimeout(scanTimeout);
 
-  // Si el lector de código de barras ha dejado de enviar teclas por un intervalo de tiempo,
-  // consideramos que el escaneo ha terminado.
-  clearTimeout(scanTimeout);  // Limpiar cualquier temporizador previo
-
-  // Acumular los caracteres del código escaneado
   scannedCode += ch;
 
-  // Establecer un nuevo temporizador para detectar el fin del escaneo (2 segundos sin entrada)
   scanTimeout = setTimeout(async () => {
-    if (!scannedCode) {
-      console.log("No barcode scanned yet.");
-      return;  // Asegurarse de que se haya escaneado algo
-    }
+    if (!scannedCode) return;
 
-    console.log(`Scanned Code: ${scannedCode}`);  // Verificar el código completo escaneado
+    const cleanCode = scannedCode.replace(/[\r\n]+$/, '');
+    scannedCode = ""; // Reset después del escaneo
 
     try {
-      // Eliminar caracteres no deseados (como \r y \n)
-      const cleanCode = scannedCode.replace(/[\r\n]+$/, '');
-      
-      // Verificar si el código existe en la colección Code (códigos válidos)
       const validCode = await Code.findOne({ code: cleanCode });
+      console.log(`Scanned code: ${cleanCode}`); // Log del código escaneado
+
+      // Crear un nuevo log de acceso para todos los intentos
+      const newLog = await AccessLog.create({ code: cleanCode });
+      console.log(`New access log created: ${cleanCode} at ${new Date().toISOString()}`); // Log de creación de nuevo log
+
+      // Emitir el resultado al cliente
       if (validCode) {
-        // Guardar el intento de acceso en AccessLog si el código es válido
-        await AccessLog.create({ code: cleanCode });
         io.emit('scanResult', { code: cleanCode, isValid: true });
-        console.log('Valid code scanned and logged.');
+        console.log('Valid code logged.');
       } else {
         io.emit('scanResult', { code: cleanCode, isValid: false });
         console.log('Invalid code scanned.');
       }
+
+      // Actualizar estadísticas después del registro
+      await updateStats();
     } catch (error) {
       console.error('Error processing barcode:', error);
       io.emit('error', { message: 'Error processing barcode' });
     }
-
-    // Limpiar la variable scannedCode después de procesarlo
-    scannedCode = "";
-  }, 2000);  // Espera 2 segundos después de la última tecla presionada antes de considerar que el escaneo ha terminado
-});
-
-// API para simular el escaneo de un código de barras
-app.post('/api/simulate/scan', async (req, res) => {
-  const { code } = req.body;
-  try {
-    const validCode = await Code.findOne({ code });
-    if (validCode) {
-      await AccessLog.create({ code });
-      io.emit('scanResult', { code, isValid: true });
-      res.json({ success: true, isValid: true });
-    } else {
-      io.emit('scanResult', { code, isValid: false });
-      res.json({ success: true, isValid: false });
-    }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  }, 200);
 });
 
 // Registrar un nuevo código
 app.post('/api/codes', async (req, res) => {
+  console.log(`POST /api/codes - Request received with code: ${req.body.code}`);
   try {
-    const cleanCode = req.body.code.replace(/[\r\n]+$/, '');  // Eliminar \r y \n al final
+    const cleanCode = req.body.code.replace(/[\r\n]+$/, '');
     const newCode = await Code.create({ code: cleanCode });
+    console.log(`New code registered: ${cleanCode} at ${new Date().toISOString()}`); // Log de registro de nuevo código
+    await updateStats(); // Actualizar estadísticas al registrar un nuevo código
     res.status(201).json(newCode);
   } catch (error) {
+    console.error('Error registering code:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
-// Estadísticas de accesos y nuevos códigos
-app.get('/api/stats', async (req, res) => {
-  const now = new Date();
-
-  // Cálculos de tiempo
-  const dayStart = new Date(now.setHours(0, 0, 0, 0)); // Inicio del día
-  const weekStart = new Date(now.setDate(now.getDate() - 7)); // Últimos 7 días
-  const monthStart = new Date(now.setDate(now.getDate() - 30)); // Últimos 30 días
-
+// Obtener el listado completo de códigos registrados
+app.get('/api/codes', async (req, res) => {
+  console.log('GET /api/codes - Request received');
   try {
-    // Consultas a las colecciones
-    const [dailyAccess, weeklyAccess, monthlyAccess, dailyNewCodes] = await Promise.all([
-      AccessLog.countDocuments({ timestamp: { $gte: dayStart } }), // Accesos hoy
-      AccessLog.countDocuments({ timestamp: { $gte: weekStart } }), // Accesos última semana
-      AccessLog.countDocuments({ timestamp: { $gte: monthStart } }), // Accesos último mes
-      Code.countDocuments({ createdAt: { $gte: dayStart } }) // Códigos nuevos hoy
-    ]);
-
-    // Crear objeto de estadísticas
-    const stats = {
-      dailyAccess, // Accesos hoy
-      weeklyAccess, // Accesos semana
-      monthlyAccess, // Accesos mes
-      dailyNewCodes // Nuevos códigos hoy
-    };
-
-    // Responder al frontend
-    res.json(stats);
-
-    // Emitir evento a través de Socket.io (opcional)
-    io.emit('updateStats', stats);
+    const codes = await Code.find().sort({ createdAt: -1 }); // Ordenar por fecha de creación descendente
+    console.log(`Found ${codes.length} codes in the database.`);
+    res.status(200).json({
+      success: true,
+      total: codes.length, // Número total de códigos
+      data: codes
+    });
   } catch (error) {
-    console.error('Error fetching stats:', error);
-    res.status(500).json({ error: 'Error fetching stats' });
+    console.error('Error fetching codes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener el listado de códigos',
+      error: error.message
+    });
   }
 });
 
+// Obtener todos los logs de acceso
+app.get('/api/accesslogs', async (req, res) => {
+  console.log('GET /api/accesslogs - Request received');
+  try {
+    const accessLogs = await AccessLog.find().sort({ timestamp: -1 }); // Ordenar por fecha descendente
+    console.log(`Found ${accessLogs.length} access logs.`);
+    res.status(200).json({
+      success: true,
+      total: accessLogs.length,
+      data: accessLogs,
+    });
+  } catch (error) {
+    console.error('Error fetching access logs:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener los logs de acceso',
+      error: error.message,
+    });
+  }
+});
+
+// Obtener el último código escaneado
+app.get('/api/last-scan', async (req, res) => {
+  console.log('GET /api/last-scan - Request received');
+  try {
+    const lastAccessLog = await AccessLog.findOne().sort({ timestamp: -1 });
+    if (!lastAccessLog) {
+      console.log('No access logs found.');
+      return res.status(404).json({ success: false, message: 'No se encontraron registros de escaneo.' });
+    }
+
+    console.log(`Last scan log retrieved: ${lastAccessLog.code} at ${lastAccessLog.timestamp.toISOString()}`); // Log al obtener el último escaneo
+    
+    const validCode = await Code.findOne({ code: lastAccessLog.code });
+    res.status(200).json({
+      success: true,
+      data: {
+        code: lastAccessLog.code,
+        timestamp: lastAccessLog.timestamp,
+        isValid: !!validCode, // Verificar si el código es válido
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching last scan log:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener el último código escaneado.', error: error.message });
+  }
+});
 
 // Inicializar el servidor
 const PORT = 3001;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log('Ready to scan barcodes. Press "Ctrl+C" to exit.');
 });
