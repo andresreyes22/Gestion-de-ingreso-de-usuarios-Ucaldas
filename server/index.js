@@ -73,126 +73,184 @@ const updateStats = async () => {
   }
 };
 
-// Capturar teclas del lector de códigos de barras
-process.stdin.on('keypress', async (ch, key) => {
-  console.log(`Key pressed: ${ch}`); // Log para cada tecla presionada
-  clearTimeout(scanTimeout);
-
-  scannedCode += ch;
-
-  scanTimeout = setTimeout(async () => {
-    if (!scannedCode) return;
-
-    const cleanCode = scannedCode.replace(/[\r\n]+$/, '');
-    scannedCode = ""; // Reset después del escaneo
-
-    try {
-      const validCode = await Code.findOne({ code: cleanCode });
-      console.log(`Scanned code: ${cleanCode}`); // Log del código escaneado
-
-      // Crear un nuevo log de acceso para todos los intentos
-      const newLog = await AccessLog.create({ code: cleanCode });
-      console.log(`New access log created: ${cleanCode} at ${new Date().toISOString()}`); // Log de creación de nuevo log
-
-      // Emitir el resultado al cliente
-      if (validCode) {
-        io.emit('scanResult', { code: cleanCode, isValid: true });
-        console.log('Valid code logged.');
-      } else {
-        io.emit('scanResult', { code: cleanCode, isValid: false });
-        console.log('Invalid code scanned.');
-      }
-
-      // Actualizar estadísticas después del registro
-      await updateStats();
-    } catch (error) {
-      console.error('Error processing barcode:', error);
-      io.emit('error', { message: 'Error processing barcode' });
-    }
-  }, 200);
-});
-
-// Registrar un nuevo código
-app.post('/api/codes', async (req, res) => {
-  console.log(`POST /api/codes - Request received with code: ${req.body.code}`);
+// Endpoint para obtener estadísticas
+app.get('/api/stats', async (req, res) => {
   try {
-    const cleanCode = req.body.code.replace(/[\r\n]+$/, '');
-    const newCode = await Code.create({ code: cleanCode });
-    console.log(`New code registered: ${cleanCode} at ${new Date().toISOString()}`); // Log de registro de nuevo código
-    await updateStats(); // Actualizar estadísticas al registrar un nuevo código
-    res.status(201).json(newCode);
+    const now = new Date();
+    const dayStart = new Date(now.setHours(0, 0, 0, 0));
+    const weekStart = new Date(now.setDate(now.getDate() - 7));
+    const monthStart = new Date(now.setDate(now.getDate() - 30));
+
+    const [dailyAccess, weeklyAccess, monthlyAccess, dailyNewCodes] = await Promise.all([
+      AccessLog.countDocuments({ timestamp: { $gte: dayStart } }),
+      AccessLog.countDocuments({ timestamp: { $gte: weekStart } }),
+      AccessLog.countDocuments({ timestamp: { $gte: monthStart } }),
+      Code.countDocuments({ createdAt: { $gte: dayStart } })
+    ]);
+
+    res.json({
+      dailyAccess,
+      weeklyAccess,
+      monthlyAccess,
+      dailyNewCodes
+    });
   } catch (error) {
-    console.error('Error registering code:', error);
-    res.status(400).json({ error: error.message });
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Error fetching stats' });
   }
 });
 
-// Obtener el listado completo de códigos registrados
+// Endpoint para obtener códigos registrados
 app.get('/api/codes', async (req, res) => {
-  console.log('GET /api/codes - Request received');
   try {
-    const codes = await Code.find().sort({ createdAt: -1 }); // Ordenar por fecha de creación descendente
-    console.log(`Found ${codes.length} codes in the database.`);
-    res.status(200).json({
-      success: true,
-      total: codes.length, // Número total de códigos
-      data: codes
-    });
+    const codes = await Code.find();
+    res.json({ data: codes });
   } catch (error) {
     console.error('Error fetching codes:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener el listado de códigos',
-      error: error.message
-    });
+    res.status(500).json({ error: 'Error fetching codes' });
   }
 });
 
-// Obtener todos los logs de acceso
+// Endpoint para obtener logs de acceso
 app.get('/api/accesslogs', async (req, res) => {
-  console.log('GET /api/accesslogs - Request received');
   try {
-    const accessLogs = await AccessLog.find().sort({ timestamp: -1 }); // Ordenar por fecha descendente
-    console.log(`Found ${accessLogs.length} access logs.`);
-    res.status(200).json({
-      success: true,
-      total: accessLogs.length,
-      data: accessLogs,
-    });
+    const logs = await AccessLog.find();
+    res.json({ data: logs });
   } catch (error) {
     console.error('Error fetching access logs:', error);
-    res.status(500).json({
+    res.status(500).json({ error: 'Error fetching access logs' });
+  }
+});
+
+// app.post('/api/simulate/scan', async (req, res) => {
+//   const { code } = req.body;
+
+//   // Verifica si el código ya está registrado en la base de datos de 'codes'
+//   let foundCode = await Code.findOne({ code });
+
+//   if (!foundCode) {
+//     // Si el código no existe, lo registramos
+//     foundCode = new Code({ code });
+//     await foundCode.save();
+//     let foundCode = await Code.findOne({ code });
+//     console.log("Código encontrado:", foundCode);
+
+//     // También, lo guardamos en los registros de acceso
+//     const accessLog = new AccessLog({
+//       code,
+//       timestamp: new Date(),
+//     });
+//     await accessLog.save();
+
+//     // Devolver la respuesta que el código es nuevo y se ha registrado
+//     return res.json({ isValid: false, message: 'Código registrado y no válido aún' });
+//   }
+
+//   // Si el código está registrado, solo se devuelve como válido
+//   res.json({ isValid: true, message: 'Acceso concedido', code });
+// });
+app.post('/api/simulate/scan', async (req, res) => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      return res.status(400).json({ message: 'El código es obligatorio' });
+    }
+
+    // Verifica si el código ya está registrado en la base de datos de 'codes'
+    let foundCode = await Code.findOne({ code });
+
+    // Guardamos siempre el código escaneado en 'AccessLog'
+    const accessLog = new AccessLog({
+      code,
+      timestamp: new Date(),
+    });
+    await accessLog.save();
+
+    // Si el código no está registrado en 'Code', responder con mensaje de código no válido
+    if (!foundCode) {
+      return res.json({
+        isValid: false,
+        message: 'Código registrado en access_log pero no válido en db',
+      });
+    }
+
+    // Si el código está registrado en 'Code', responder con acceso concedido
+    res.json({ isValid: true, message: 'Acceso concedido', code });
+
+  } catch (error) {
+    console.error('Error en el endpoint /api/simulate/scan:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+});
+
+
+
+// Endpoint para registrar un nuevo código
+app.post('/api/codes', async (req, res) => {
+  try {
+    const { code } = req.body;
+    const newCode = new Code({ code });
+    await newCode.save();
+    res.status(201).json({ message: 'Código registrado exitosamente' });
+  } catch (error) {
+    console.error('Error al registrar el código:', error);
+    res.status(500).json({ error: 'Error al registrar el código' });
+  }
+});
+
+// Endpoint para obtener el último código escaneado
+app.get('/api/last-scan', async (req, res) => {
+  
+  const { code } = req.body;
+  console.log("Body recibido:", req.body);
+  try {
+    // Buscar el último registro de escaneo en AccessLog, ordenado por timestamp descendente
+    const lastAccessLog = await AccessLog.findOne().sort({ timestamp: -1 });
+
+    // Si no se encuentra ningún registro, enviar un error 404
+    if (!lastAccessLog || !lastAccessLog.code) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontraron registros de escaneo o el código está vacío.',
+      });
+    }
+
+    // Verificar si el código del último escaneo está registrado en la colección de códigos
+    const validCode = await Code.findOne({ code: lastAccessLog.code });
+
+    // Responder con el código escaneado, su timestamp y si es válido
+    return res.status(200).json({
+      success: true,
+      data: {
+        code: lastAccessLog.code,  // El último código escaneado
+        timestamp: lastAccessLog.timestamp,  // Fecha y hora del escaneo
+        isValid: !!validCode,  // Verificar si el código está registrado (booleano)
+      },
+    });
+  } catch (error) {
+    // Capturar errores del servidor y enviar un mensaje de error detallado
+    console.error(error); // Para depurar errores
+    return res.status(500).json({
       success: false,
-      message: 'Error al obtener los logs de acceso',
+      message: 'Error al obtener el último código escaneado.',
       error: error.message,
     });
   }
 });
 
-// Obtener el último código escaneado
-app.get('/api/last-scan', async (req, res) => {
-  console.log('GET /api/last-scan - Request received');
-  try {
-    const lastAccessLog = await AccessLog.findOne().sort({ timestamp: -1 });
-    if (!lastAccessLog) {
-      console.log('No access logs found.');
-      return res.status(404).json({ success: false, message: 'No se encontraron registros de escaneo.' });
-    }
 
-    console.log(`Last scan log retrieved: ${lastAccessLog.code} at ${lastAccessLog.timestamp.toISOString()}`); // Log al obtener el último escaneo
-    
-    const validCode = await Code.findOne({ code: lastAccessLog.code });
-    res.status(200).json({
-      success: true,
-      data: {
-        code: lastAccessLog.code,
-        timestamp: lastAccessLog.timestamp,
-        isValid: !!validCode, // Verificar si el código es válido
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching last scan log:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener el último código escaneado.', error: error.message });
+// Función para capturar la entrada del teclado
+process.stdin.on('keypress', async (ch, key) => {
+  if (key && key.name === 'enter') {
+    try {
+      const code = await Code.findOne({ code: scannedCode });
+      const isValid = !!code;
+      io.emit('scanResult', { code: scannedCode, isValid });
+      scannedCode = ""; // Limpiar el código escaneado
+    } catch (error) {
+      console.error("Error al procesar el código:", error);
+    }
   }
 });
 
