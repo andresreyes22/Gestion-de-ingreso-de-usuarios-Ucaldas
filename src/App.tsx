@@ -1,99 +1,150 @@
-import React, { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
-import { QrCode, CheckCircle, AlertCircle } from 'lucide-react';
-import toast, { Toaster } from 'react-hot-toast';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-
-// Configuración de Socket.IO
-const socket = io('http://localhost:3001');
+import { Toaster, toast } from 'react-hot-toast';
+import { BarChart, CheckCircle, AlertCircle } from 'react-feather';
 
 function App() {
   const [scannedCode, setScannedCode] = useState('');
   const [isValid, setIsValid] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<'verify' | 'register'>('verify');
   const [stats, setStats] = useState({
     dailyAccess: 0,
     weeklyAccess: 0,
     monthlyAccess: 0,
     dailyNewCodes: 0,
   });
-  const [mode, setMode] = useState<'verify' | 'register'>('verify');
+  const [codes, setCodes] = useState<string[]>([]);
+  const [accessLogs, setAccessLogs] = useState([]);
+  const [scanTimeout, setScanTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  // Obtener estadísticas al montar el componente
   useEffect(() => {
     fetchStats();
+    fetchCodes();
+    fetchAccessLogs();
   }, []);
 
-  // Manejar eventos de Socket.IO
-  useEffect(() => {
-    socket.on('scanResult', (data) => {
-      setScannedCode(data.code);
-      setIsValid(data.isValid);
-
-      toast(data.isValid ? '¡Acceso concedido!' : '¡Acceso denegado!', {
-        icon: data.isValid ? '✅' : '❌',
-      });
-    });
-
-    socket.on('updateStats', (newStats) => {
-      setStats(newStats);
-    });
-
-    socket.on('doorOpened', () => {
-      toast.success('¡Puerta abierta manualmente!');
-    });
-
-    return () => {
-      socket.off('scanResult');
-      socket.off('updateStats');
-      socket.off('doorOpened');
-    };
-  }, []);
-
-  // Registrar código
-  const handleRegisterCode = async () => {
-    if (!scannedCode) {
-      toast.error('Primero escanee un código de barras');
-      return;
-    }
-
-    try {
-      await axios.post('http://localhost:3001/api/codes', { code: scannedCode });
-      toast.success('¡Código registrado exitosamente!');
-      setScannedCode('');
-    } catch (error) {
-      console.error('Error al registrar el código:', error);
-      toast.error('Error al registrar el código');
-    }
-  };
-
-  // Obtener estadísticas desde el backend
   const fetchStats = async () => {
     try {
       const response = await axios.get('http://localhost:3001/api/stats');
       setStats(response.data);
     } catch (error) {
-      console.error('Error al obtener estadísticas:', error);
-      toast.error('No se pudieron obtener las estadísticas');
+      toast.error('Error al obtener las estadísticas');
+    }
+  };
+
+  const fetchCodes = async () => {
+    try {
+      const response = await axios.get('http://localhost:3001/api/codes');
+      setCodes(response.data.data);
+    } catch (error) {
+      toast.error('Error al obtener los códigos registrados');
+    }
+  };
+
+  const fetchAccessLogs = async () => {
+    try {
+      const response = await axios.get('http://localhost:3001/api/accesslogs');
+      setAccessLogs(response.data.data);
+    } catch (error) {
+      toast.error('Error al obtener los logs de acceso');
+    }
+  };
+
+  // const handleScanInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const inputCode = e.target.value.trim(); // Eliminar espacios adicionales
+  //   setScannedCode(inputCode);
+  
+  //   // Limpiar cualquier timeout anterior
+  //   if (scanTimeout) {
+  //     clearTimeout(scanTimeout);
+  //     setScanTimeout(null);
+  //   }
+  
+  //   if (inputCode.length > 0) {
+  //     verifyCode(inputCode); // Verificar código directamente
+  //     setScannedCode(''); // Limpiar el campo después de verificar
+  //   } else {
+  //     // Manejar casos de input vacío o invalidez
+  //     const timeout = setTimeout(() => {
+  //       if (inputCode === scannedCode) {
+  //         setScannedCode(''); // Limpiar entrada
+  //         setIsValid(null); // Reiniciar estado visual
+  //         toast.error('Escaneo incompleto o código inválido');
+  //       }
+  //     }, 3000);
+  //     setScanTimeout(timeout);
+  //   }
+  // };
+  const handleScanInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputCode = e.target.value.trim(); // Eliminar espacios adicionales
+    setScannedCode(inputCode);
+  
+    // Limpiar cualquier timeout anterior
+    if (scanTimeout) {
+      clearTimeout(scanTimeout);
+      setScanTimeout(null);
+    }
+  
+    // Asumir que el código es completo si tiene una longitud específica (opcional)
+    if (inputCode.length >= 8) {
+      // Establecer un timeout para esperar si el código está completo
+      const timeout = setTimeout(() => {
+        verifyCode(inputCode); // Verificar código cuando el código esté completo
+        setScannedCode(''); // Limpiar el campo después de verificar
+      }, 2000); // Ajustar el tiempo según el comportamiento del escáner
+      setScanTimeout(timeout);
+    } else {
+      // Manejar casos de input vacío o invalidez
+      const timeout = setTimeout(() => {
+        if (inputCode === scannedCode) {
+          setScannedCode(''); // Limpiar entrada
+          setIsValid(null); // Reiniciar estado visual
+          toast.error('Escaneo incompleto o código inválido');
+        }
+      }, 3000);
+      setScanTimeout(timeout);
+    }
+  };
+  
+  const verifyCode = async (code: string) => {
+    try {
+      const response = await axios.post('http://localhost:3001/api/simulate/scan', { code });
+      console.log('Respuesta del backend:', response.data);
+      setIsValid(response.data.isValid);
+      toast(response.data.isValid ? '¡Acceso concedido!' : '¡Acceso denegado!', {
+        icon: response.data.isValid ? '✅' : '❌',
+      });
+    } catch (error) {
+      console.error('Error en verifyCode:', error);
+      setIsValid(false);
+      toast.error('Error al verificar el código');
+    }
+  };
+  
+  
+  const handleRegisterCode = async () => {
+    try {
+      await axios.post('http://localhost:3001/api/codes', { code: scannedCode });
+      toast.success('Código registrado exitosamente');
+      setScannedCode('');
+      fetchCodes();
+    } catch (error) {
+      toast.error('Error al registrar el código');
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Toaster position="top-right" />
-      
-      {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <QrCode className="h-8 w-8 text-indigo-600" />
+            <BarChart className="h-8 w-8 text-indigo-600" />
             Sistema de control de acceso de personal Universitario
           </h1>
         </div>
       </header>
-
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        {/* Mode Toggle */}
         <div className="mb-8 flex justify-center gap-4">
           <button
             onClick={() => setMode('verify')}
@@ -109,21 +160,11 @@ function App() {
           </button>
         </div>
 
-        {/* Scan Status */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="text-center">
-            {/* Encabezado dinámico */}
             <h2 className="text-xl font-semibold mb-4">
-              {scannedCode
-                ? isValid === null
-                  ? 'Esperando el resultado del escaneo...'
-                  : isValid
-                  ? 'Código de barras válido'
-                  : 'Código de barras no válido'
-                : 'Ningún código escaneado todavía'}
+              {mode === 'verify' ? 'Verificar código de barras' : 'Registrar nuevo código de barras'}
             </h2>
-
-            {/* Icono y mensaje visual */}
             <div className="text-6xl mb-4">
               {scannedCode ? (
                 isValid !== null ? (
@@ -142,19 +183,27 @@ function App() {
           </div>
         </div>
 
-        {/* Registro de código */}
-        {mode === 'register' && (
-          <div className="flex justify-center">
+        <div className="mb-8 flex justify-center">
+          <input
+            type="text"
+            value={scannedCode}
+            onChange={handleScanInput}
+            placeholder="Escanear código de barras..."
+            className="px-4 py-2 border rounded-lg w-72 text-center"
+          />
+        </div>
+
+        <div className="flex justify-center gap-6">
+          {mode === 'register' && (
             <button
               onClick={handleRegisterCode}
               className="px-6 py-2 rounded-lg bg-indigo-600 text-white font-semibold"
             >
               Registrar código
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Statistics */}
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           <div className="bg-white rounded-lg shadow-md p-6 text-center">
             <h4 className="text-lg font-semibold">Acceso diario</h4>
@@ -169,7 +218,7 @@ function App() {
             <p className="text-3xl">{stats.monthlyAccess}</p>
           </div>
           <div className="bg-white rounded-lg shadow-md p-6 text-center">
-            <h4 className="text-lg font-semibold">Nuevos códigos</h4>
+            <h4 className="text-lg font-semibold">Códigos nuevos hoy</h4>
             <p className="text-3xl">{stats.dailyNewCodes}</p>
           </div>
         </div>
