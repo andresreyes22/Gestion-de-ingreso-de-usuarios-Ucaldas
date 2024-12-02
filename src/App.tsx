@@ -17,10 +17,17 @@ function App() {
   const [accessLogs, setAccessLogs] = useState([]);
   const [scanTimeout, setScanTimeout] = useState<NodeJS.Timeout | null>(null);
 
+  // UseEffect para obtener los datos iniciales y actualizar periódicamente
   useEffect(() => {
-    fetchStats();
-    fetchCodes();
-    fetchAccessLogs();
+    fetchStats();  // Obtener las estadísticas iniciales
+    fetchCodes();  // Obtener los códigos registrados
+    fetchAccessLogs();  // Obtener los logs de acceso
+
+    // Configurar un intervalo para actualizar las estadísticas cada 10 segundos
+    const interval = setInterval(fetchStats, 3000);  // 10 segundos
+
+    // Limpiar el intervalo cuando el componente se desmonte
+    return () => clearInterval(interval);
   }, []);
 
   const fetchStats = async () => {
@@ -50,85 +57,45 @@ function App() {
     }
   };
 
-
-  // const handleScanInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-  //   const inputCode = e.target.value.trim(); // Eliminar espacios adicionales
-  //   setScannedCode(inputCode);
-  
-  //   // Limpiar cualquier timeout anterior
-  //   if (scanTimeout) {
-  //     clearTimeout(scanTimeout);
-  //     setScanTimeout(null);
-  //   }
-  
-  //   // Asumir que el código es completo si tiene una longitud específica (opcional)
-  //   if (inputCode.length >= 8) {
-  //     // Establecer un timeout para esperar si el código está completo
-  //     const timeout = setTimeout(() => {
-  //       verifyCode(inputCode); // Verificar código cuando el código esté completo
-  //       setScannedCode(''); // Limpiar el campo después de verificar
-  //     }, 2000); // Ajustar el tiempo según el comportamiento del escáner
-  //     setScanTimeout(timeout);
-  //   } else {
-  //     // Manejar casos de input vacío o invalidez
-  //     const timeout = setTimeout(() => {
-  //       if (inputCode === scannedCode) {
-  //         setScannedCode(''); // Limpiar entrada
-  //         setIsValid(null); // Reiniciar estado visual
-  //         toast.error('Escaneo incompleto o código inválido');
-  //       }
-  //     }, 3000);
-  //     setScanTimeout(timeout);
-  //   }
-  // };
   const handleScanInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const inputCode = e.target.value.trim(); // Eliminar espacios adicionales
+    const inputCode = e.target.value.trim();
     setScannedCode(inputCode);
-  
+
     // Limpiar cualquier timeout anterior
     if (scanTimeout) {
       clearTimeout(scanTimeout);
       setScanTimeout(null);
     }
-  
-    // Asumir que el código es completo si tiene una longitud específica (opcional)
+
+    // Asumir que el código es completo si tiene una longitud específica
     if (inputCode.length >= 8) {
-      // Establecer un timeout para esperar si el código está completo
       const timeout = setTimeout(() => {
         verifyCode(inputCode); // Verificar código cuando el código esté completo
-      }, 2000); // Ajustar el tiempo según el comportamiento del escáner
+      }, 2000);
       setScanTimeout(timeout);
     } else {
-      // Manejar casos de input vacío o invalidez
       const timeout = setTimeout(() => {
         setIsValid(null); // Reiniciar estado visual
         toast.error('Escaneo incompleto o código inválido');
-  
-        // Limpiar el campo después de 5 segundos, aún cuando el código sea inválido
         setScannedCode(''); // Limpiar el campo
       }, 5000); // Limpiar el código después de 5 segundos
       setScanTimeout(timeout);
     }
   };
-  
-  
-  
+
   const verifyCode = async (code: string) => {
     try {
       const response = await axios.post('http://localhost:3001/api/simulate/scan', { code });
-      console.log('Respuesta del backend:', response.data);
       setIsValid(response.data.isValid);
       toast(response.data.isValid ? '¡Acceso concedido!' : '¡Acceso denegado!', {
         icon: response.data.isValid ? '✅' : '❌',
       });
     } catch (error) {
-      console.error('Error en verifyCode:', error);
       setIsValid(false);
       toast.error('Error al verificar el código');
     }
   };
-  
-  
+
   const handleRegisterCode = async () => {
     try {
       await axios.post('http://localhost:3001/api/codes', { code: scannedCode });
