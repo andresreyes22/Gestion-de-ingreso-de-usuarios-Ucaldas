@@ -50,6 +50,7 @@ function App() {
     }
   };
 
+
   // const handleScanInput = (e: React.ChangeEvent<HTMLInputElement>) => {
   //   const inputCode = e.target.value.trim(); // Eliminar espacios adicionales
   //   setScannedCode(inputCode);
@@ -60,9 +61,14 @@ function App() {
   //     setScanTimeout(null);
   //   }
   
-  //   if (inputCode.length > 0) {
-  //     verifyCode(inputCode); // Verificar código directamente
-  //     setScannedCode(''); // Limpiar el campo después de verificar
+  //   // Asumir que el código es completo si tiene una longitud específica (opcional)
+  //   if (inputCode.length >= 8) {
+  //     // Establecer un timeout para esperar si el código está completo
+  //     const timeout = setTimeout(() => {
+  //       verifyCode(inputCode); // Verificar código cuando el código esté completo
+  //       setScannedCode(''); // Limpiar el campo después de verificar
+  //     }, 2000); // Ajustar el tiempo según el comportamiento del escáner
+  //     setScanTimeout(timeout);
   //   } else {
   //     // Manejar casos de input vacío o invalidez
   //     const timeout = setTimeout(() => {
@@ -90,21 +96,22 @@ function App() {
       // Establecer un timeout para esperar si el código está completo
       const timeout = setTimeout(() => {
         verifyCode(inputCode); // Verificar código cuando el código esté completo
-        setScannedCode(''); // Limpiar el campo después de verificar
       }, 2000); // Ajustar el tiempo según el comportamiento del escáner
       setScanTimeout(timeout);
     } else {
       // Manejar casos de input vacío o invalidez
       const timeout = setTimeout(() => {
-        if (inputCode === scannedCode) {
-          setScannedCode(''); // Limpiar entrada
-          setIsValid(null); // Reiniciar estado visual
-          toast.error('Escaneo incompleto o código inválido');
-        }
-      }, 3000);
+        setIsValid(null); // Reiniciar estado visual
+        toast.error('Escaneo incompleto o código inválido');
+  
+        // Limpiar el campo después de 5 segundos, aún cuando el código sea inválido
+        setScannedCode(''); // Limpiar el campo
+      }, 5000); // Limpiar el código después de 5 segundos
       setScanTimeout(timeout);
     }
   };
+  
+  
   
   const verifyCode = async (code: string) => {
     try {
@@ -163,7 +170,7 @@ function App() {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="text-center">
             <h2 className="text-xl font-semibold mb-4">
-              {mode === 'verify' ? 'Verificar código de barras' : 'Registrar nuevo código de barras'}
+              {mode === 'verify' ? 'Verificando código de barras' : 'Registrar nuevo código de barras'}
             </h2>
             <div className="text-6xl mb-4">
               {scannedCode ? (
