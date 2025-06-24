@@ -9,7 +9,7 @@ Este proyecto presenta el desarrollo e implementación de un sistema de control 
 - **ESP32** como unidad de control principal
 - **Lector de código de barras** para la autenticación de usuarios
 - **Servomotor y LEDs** (verde y rojo) para señalización de acceso
-- **Interfaz gráfica** desarrollada en Python (Tkinter)
+- **Interfaz gráfica** desarrollada
 - **Base de datos MongoDB** para gestión de accesos y usuarios
 - **Nivel de madurez tecnológica TRL4**
 
@@ -37,7 +37,7 @@ Desarrollar e implementar un prototipo de sistema de control de acceso para pers
 - LEDs (rojo y verde)
 - Lector de código de barras
 - Fuente 5V
-- Interfaz gráfica en Python (Tkinter)
+- Interfaz gráfica 
 - MongoDB
 
 ## Metodología
