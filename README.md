@@ -87,5 +87,5 @@ Aplicación de la metodología **Scrum**:
 [Sistema de control de acceso de personal universitario mediante el control de acceso de lectura de código de barras por lectura del carnet.docx](https://github.com/user-attachments/files/20874726/Sistema.de.control.de.acceso.de.personal.universitario.mediante.el.control.de.acceso.de.lectura.de.codigo.de.barras.por.lectura.del.carnet.docx)
 ![IMG_20241204_152822_135](https://github.com/user-attachments/assets/29c1d66b-5a13-4342-8055-915e2651e0ac)
 
-##Video funcionamiento 
+## Video funcionamiento 
 https://drive.google.com/file/d/1FGjK_ssd3J6ptlV5g9afk9XX_8yRfHkk/view?usp=sharing
