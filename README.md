@@ -1,4 +1,4 @@
-# Sistema de Control de Acceso Universitario mediante Lectura de Código de Barras
+# Sistema de Control de Acceso Universitario mediante Lectura de Código de Barras del carnet estudiantil
 
 ## Descripción del Proyecto
 
