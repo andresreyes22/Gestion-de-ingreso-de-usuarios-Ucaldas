@@ -2,7 +2,7 @@
 
 ## Descripción del Proyecto
 
-Este proyecto presenta el desarrollo e implementación de un sistema de control de acceso para personal universitario, utilizando la lectura de códigos de barras impresos en los carnets institucionales. La solución emplea el microcontrolador ESP32, un servomotor, LEDs indicadores y una interfaz gráfica desarrollada en Python.
+Este proyecto presenta el desarrollo e implementación de un sistema de control de acceso para personal universitario, utilizando la lectura de códigos de barras impresos en los carnets institucionales. La solución emplea el microcontrolador ESP32, un servomotor, LEDs indicadores y una interfaz gráfica desarrollada en javaScritp, arduino.
 
 ## Características Principales
 
